@@ -1,245 +1,139 @@
 <!DOCTYPE html>
 <html lang="he">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>סימולטור טיסה מתקדם</title>
-<style>
-  body, html {
-    margin: 0; padding: 0; overflow: hidden; height: 100%;
-    font-family: Arial, sans-serif;
-    background: linear-gradient(to top, #87CEEB, #ffffff);
-  }
-  #hud {
-    position: fixed; top: 10px; left: 10px; z-index: 100;
-    background: rgba(0,0,0,0.6); color: white;
-    padding: 10px 15px; border-radius: 8px;
-    font-size: 16px;
-    user-select: none;
-    white-space: pre-line;
-    min-width: 180px;
-  }
-  #throttleBarContainer {
-    position: fixed; top: 10px; right: 10px; width: 30px; height: 150px;
-    background: rgba(0,0,0,0.6);
-    border-radius: 8px;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-  }
-  #throttleBar {
-    width: 20px;
-    background: #ff4500;
-    border-radius: 4px 4px 0 0;
-  }
-  #help {
-    position: fixed;
-    bottom: 10px;
-    left: 10px;
-    background: rgba(0,0,0,0.5);
-    color: #fff;
-    padding: 12px 18px;
-    border-radius: 10px;
-    font-size: 15px;
-    z-index: 200;
-    line-height: 1.7;
-    max-width: 350px;
-    direction: rtl;
-  }
-</style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r148/three.min.js"></script>
+  <meta charset="UTF-8">
+  <title>סימולטור טיסה</title>
+  <style>
+    html, body { margin: 0; overflow: hidden; height: 100%; }
+    canvas { display: block; }
+    #hud {
+      position: fixed; top: 10px; left: 10px;
+      background: rgba(0,0,0,0.6); color: white;
+      padding: 10px; border-radius: 8px; font-family: sans-serif;
+      white-space: pre-line; font-size: 16px;
+    }
+    #score {
+      position: fixed; top: 10px; right: 10px;
+      background: rgba(0,0,0,0.6); color: white;
+      padding: 10px; border-radius: 8px; font-family: sans-serif;
+      font-size: 16px;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.148.0/build/three.min.js"></script>
 </head>
 <body>
-<div id="hud">
-מהירות: 0 קמ"ש
-כיוון (Yaw): 0°
-גובה: 0 מטר
-מד גז: 0%
-</div>
-<div id="throttleBarContainer">
-  <div id="throttleBar" style="height: 0%;"></div>
-</div>
-<div id="help">
-<b>הוראות שליטה:</b><br>
-W/S – מעלה/מוריד אף המטוס<br>
-A/D – מסובב את המטוס (Yaw)<br>
-Q/E – גלגול (Roll)<br>
-חץ למעלה/למטה – מאיץ/מאט<br>
-חץ שמאלה/ימינה – תנועה צדית<br>
-רווח – עצירה מוחלטת<br>
-</div>
-<script>
-  let scene, camera, renderer;
-  let airplane, velocity, rotationSpeed;
-  let keys = {};
-  let clock = new THREE.Clock();
-
-  let acceleration = new THREE.Vector3(0, 0, 0);
-  const maxSpeed = 50;
-
-  function init() {
-    scene = new THREE.Scene();
-
-    // Skybox gradient simulation by background color
-    scene.background = new THREE.Color(0x87ceeb);
-
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 10, 30);
-    camera.lookAt(0, 0, 0);
-
-    renderer = new THREE.WebGLRenderer({antialias:true});
-    renderer.setSize(window.innerWidth, window.innerHeight);
+  <div id="hud">מהירות: 0 קמ"ש\nגובה: 0 מ׳\nכיוון: 0°</div>
+  <div id="score">נקודות: 0</div>
+  <script>
+    let scene = new THREE.Scene();
+    let camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1000);
+    let renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(innerWidth, innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // Lighting
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(5, 10, 7);
-    scene.add(directionalLight);
+    // תאורה
+    scene.add(new THREE.AmbientLight(0x888888));
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(10, 20, 10);
+    scene.add(light);
 
-    const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
-    scene.add(ambientLight);
-
-    // Ground
-    const groundGeo = new THREE.PlaneGeometry(1000, 1000);
-    const groundMat = new THREE.MeshPhongMaterial({color: 0x228B22});
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI/2;
+    // קרקע
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(1000, 1000),
+      new THREE.MeshLambertMaterial({ color: 0x228B22 })
+    );
+    ground.rotation.x = -Math.PI / 2;
     ground.position.y = -2;
-    ground.receiveShadow = true;
     scene.add(ground);
 
-    // Add simple box airplane
-    const airplaneGeo = new THREE.BoxGeometry(5, 2, 8);
-    const airplaneMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-    airplane = new THREE.Mesh(airplaneGeo, airplaneMat);
+    // מטוס (קובייה)
+    const airplane = new THREE.Mesh(
+      new THREE.BoxGeometry(3, 1, 5),
+      new THREE.MeshPhongMaterial({ color: 0xff0000 })
+    );
     airplane.position.set(0, 2, 0);
     scene.add(airplane);
 
-    velocity = new THREE.Vector3(0, 0, 0);
-    rotationSpeed = { pitch: 0, yaw: 0, roll: 0 };
-
-    window.addEventListener('resize', onWindowResize);
-    window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
-    window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
-  }
-
-  function onWindowResize() {
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  }
-
-  function updateControls(delta) {
-    const rotSpeed = 90; // degrees per second
-    const accelAmount = 30;
-
-    // Pitch (W/S)
-    if(keys['w']) rotationSpeed.pitch = THREE.MathUtils.lerp(rotationSpeed.pitch, rotSpeed, 0.1);
-    else if(keys['s']) rotationSpeed.pitch = THREE.MathUtils.lerp(rotationSpeed.pitch, -rotSpeed, 0.1);
-    else rotationSpeed.pitch = THREE.MathUtils.lerp(rotationSpeed.pitch, 0, 0.1);
-
-    // Yaw (A/D)
-    if(keys['a']) rotationSpeed.yaw = THREE.MathUtils.lerp(rotationSpeed.yaw, rotSpeed, 0.1);
-    else if(keys['d']) rotationSpeed.yaw = THREE.MathUtils.lerp(rotationSpeed.yaw, -rotSpeed, 0.1);
-    else rotationSpeed.yaw = THREE.MathUtils.lerp(rotationSpeed.yaw, 0, 0.1);
-
-    // Roll (Q/E)
-    if(keys['q']) rotationSpeed.roll = THREE.MathUtils.lerp(rotationSpeed.roll, rotSpeed * 2, 0.1);
-    else if(keys['e']) rotationSpeed.roll = THREE.MathUtils.lerp(rotationSpeed.roll, -rotSpeed * 2, 0.1);
-    else rotationSpeed.roll = THREE.MathUtils.lerp(rotationSpeed.roll, 0, 0.1);
-
-    // Acceleration forward/backward (Arrow Up/Down)
-    if(keys['arrowup']) acceleration.z = THREE.MathUtils.lerp(acceleration.z, -accelAmount, 0.1);
-    else if(keys['arrowdown']) acceleration.z = THREE.MathUtils.lerp(acceleration.z, accelAmount, 0.1);
-    else acceleration.z = THREE.MathUtils.lerp(acceleration.z, 0, 0.1);
-
-    // Acceleration sideways (Arrow Left/Right)
-    if(keys['arrowleft']) acceleration.x = THREE.MathUtils.lerp(acceleration.x, -accelAmount, 0.1);
-    else if(keys['arrowright']) acceleration.x = THREE.MathUtils.lerp(acceleration.x, accelAmount, 0.1);
-    else acceleration.x = THREE.MathUtils.lerp(acceleration.x, 0, 0.1);
-
-    // Space to stop all movement
-    if(keys[' ']) {
-      acceleration.set(0, 0, 0);
-      velocity.set(0, 0, 0);
-      rotationSpeed = { pitch: 0, yaw: 0, roll: 0 };
-    }
-  }
-
-  function animate() {
-    requestAnimationFrame(animate);
-    let delta = clock.getDelta();
-
-    updateControls(delta);
-
-    if(!airplane) {
-      renderer.render(scene, camera);
-      return;
-    }
-
-    // Update rotations
-    airplane.rotation.x += THREE.MathUtils.degToRad(rotationSpeed.pitch * delta);
-    airplane.rotation.y += THREE.MathUtils.degToRad(rotationSpeed.yaw * delta);
-    airplane.rotation.z += THREE.MathUtils.degToRad(rotationSpeed.roll * delta);
-
-    // Update velocity with acceleration and drag
-    const drag = 5;
-    velocity.addScaledVector(acceleration, delta);
-    velocity.x -= velocity.x * drag * delta;
-    velocity.z -= velocity.z * drag * delta;
-
-    // Clamp max speed
-    if(velocity.length() > maxSpeed) {
-      velocity.setLength(maxSpeed);
-    }
-
-    // Move airplane according to rotation and velocity
-    let forward = new THREE.Vector3(0, 0, -1);
-    forward.applyEuler(airplane.rotation);
-    forward.multiplyScalar(velocity.z * delta);
-
-    let sideways = new THREE.Vector3(1, 0, 0);
-    sideways.applyEuler(airplane.rotation);
-    sideways.multiplyScalar(velocity.x * delta);
-
-    airplane.position.add(forward);
-    airplane.position.add(sideways);
-
-    // Prevent airplane from going below ground
-    if(airplane.position.y < -2) {
-      airplane.position.y = -2;
-      velocity.y = Math.max(0, velocity.y);
-    }
-
-    // Update camera to follow airplane
-    const camOffset = new THREE.Vector3(0, 5, 15);
-    camOffset.applyEuler(airplane.rotation);
-    camera.position.copy(airplane.position).add(camOffset);
+    // מצלמה
+    camera.position.set(0, 5, 15);
     camera.lookAt(airplane.position);
 
-    // Update HUD
-    const speedVal = velocity.length() * 100;
-    let pitchDeg = THREE.MathUtils.radToDeg(airplane.rotation.x) % 360;
-    if(pitchDeg < 0) pitchDeg += 360;
-    let yawDeg = THREE.MathUtils.radToDeg(airplane.rotation.y) % 360;
-    if(yawDeg < 0) yawDeg += 360;
-    const altitude = airplane.position.y.toFixed(2);
-    const throttlePercent = Math.min(Math.max((acceleration.z / -30) * 100, 0), 100);
+    // שליטה
+    const keys = {};
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-    document.getElementById('hud').innerText =
-      `מהירות: ${speedVal.toFixed(0)} קמ"ש\n` +
-      `כיוון (Yaw): ${yawDeg.toFixed(1)}°\n` +
-      `גובה: ${altitude} מטר\n` +
-      `מד גז: ${throttlePercent.toFixed(0)}%`;
+    let velocity = new THREE.Vector3();
+    let acceleration = new THREE.Vector3();
+    const maxSpeed = 2;
+    let score = 0;
 
-    // Update throttle bar height
-    document.getElementById('throttleBar').style.height = throttlePercent + '%';
+    // חישוקים
+    const rings = [];
+    const ringGeo = new THREE.TorusGeometry(4, 0.3, 16, 100);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.5 });
 
-    renderer.render(scene, camera);
-  }
+    function createRing(x, y, z) {
+      const ring = new THREE.Mesh(ringGeo, ringMat.clone());
+      ring.position.set(x, y, z);
+      ring.rotation.x = Math.PI / 2;
+      scene.add(ring);
+      rings.push(ring);
+    }
 
-  init();
-  animate();
-</script>
+    createRing(0, 5, -30);
+    createRing(10, 8, -60);
+    createRing(-10, 10, -100);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = 0.05;
+
+      // סיבוב המטוס
+      if (keys['a']) airplane.rotation.y += 0.03;
+      if (keys['d']) airplane.rotation.y -= 0.03;
+      if (keys['w']) airplane.rotation.x += 0.02;
+      if (keys['s']) airplane.rotation.x -= 0.02;
+      if (keys['q']) airplane.rotation.z += 0.02;
+      if (keys['e']) airplane.rotation.z -= 0.02;
+
+      // תאוצה
+      if (keys['arrowup']) acceleration.z = -0.05;
+      else if (keys['arrowdown']) acceleration.z = 0.05;
+      else acceleration.z = 0;
+
+      // חשב כיוון תנועה
+      const dir = new THREE.Vector3(0, 0, 1).applyEuler(airplane.rotation).multiplyScalar(acceleration.z);
+      velocity.add(dir);
+      velocity.clampLength(0, maxSpeed);
+      airplane.position.add(velocity);
+
+      // עדכון מצלמה
+      const camOffset = new THREE.Vector3(0, 4, 10).applyEuler(airplane.rotation);
+      camera.position.copy(airplane.position).add(camOffset);
+      camera.lookAt(airplane.position);
+
+      // בדיקת חישוקים
+      for (let i = 0; i < rings.length; i++) {
+        const ring = rings[i];
+        if (ring && airplane.position.distanceTo(ring.position) < 3) {
+          scene.remove(ring);
+          rings[i] = null;
+          score += 100;
+          document.getElementById('score').innerText = `נקודות: ${score}`;
+        }
+      }
+
+      // HUD
+      document.getElementById('hud').innerText =
+        `מהירות: ${(velocity.length() * 100).toFixed(0)} קמ"ש\n` +
+        `גובה: ${airplane.position.y.toFixed(1)} מ׳\n` +
+        `כיוון: ${THREE.MathUtils.radToDeg(airplane.rotation.y).toFixed(0)}°`;
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
 </body>
 </html>
